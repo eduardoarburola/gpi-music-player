@@ -43,6 +43,25 @@ def _preview(config: Config, path: str, width: int, height: int) -> int:
     app.shuffle = True
     app.view = "playing" if "--playing" in sys.argv else "library"
 
+    if "--browser" in sys.argv:
+        from gpi_music.browser import Entry
+
+        app.view = "files"
+        app.browse_path = "/recalbox/share/roms/music"
+        app.browse_entries = [
+            Entry("/recalbox/share/roms", "..", True, False),
+            Entry("/recalbox/share/roms/music/Album 2019", "Album 2019", True, False),
+            Entry("/recalbox/share/roms/music/Podcasts", "Podcasts", True, False),
+            Entry("/recalbox/share/roms/music/01 - Ferretown Morning.mp3", "01 - Ferretown Morning.mp3", False, True),
+            Entry("/recalbox/share/roms/music/02 - Nightcall.flac", "02 - Nightcall.flac", False, True),
+            Entry("/recalbox/share/roms/music/03 - Midnight City.opus", "03 - Midnight City.opus", False, True),
+        ]
+        app.browse_index = 3
+        app.ui.draw_filebrowser(app.browse_path, app.browse_entries, app.browse_index)
+        surface.save_png(path)
+        print("Previsualización guardada en %s" % path)
+        return 0
+
     if app.view == "library":
         app.ui.draw_library(app.tracks, app.index, app.tracks[app.index].source_label, len(app.tracks))
     else:
@@ -68,6 +87,46 @@ def _scan(config: Config) -> int:
     return 0
 
 
+class _EventLog:
+    """Escribe los eventos de entrada en un fichero (diagnóstico a distancia).
+
+    El fichero se recorta cuando pasa de 256 KB para que no crezca sin fin en
+    la microSD.
+    """
+
+    MAX_BYTES = 256 * 1024
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self._fh = None
+        try:
+            folder = os.path.dirname(os.path.abspath(path))
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            if os.path.isfile(path) and os.path.getsize(path) > self.MAX_BYTES:
+                os.remove(path)
+            self._fh = open(path, "a", encoding="utf-8")
+        except OSError:
+            self._fh = None
+
+    def __call__(self, line: str) -> None:
+        if self._fh is None:
+            return
+        try:
+            self._fh.write(line + "\n")
+            self._fh.flush()
+        except OSError:
+            pass
+
+    def close(self) -> None:
+        if self._fh is not None:
+            try:
+                self._fh.close()
+            except OSError:
+                pass
+            self._fh = None
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="gpi-music", description="Reproductor de música para GPi Case")
     parser.add_argument("--config", help="ruta del archivo de configuración")
@@ -78,6 +137,10 @@ def main(argv=None) -> int:
     parser.add_argument("--width", type=int, default=320, help="ancho para el modo preview")
     parser.add_argument("--height", type=int, default=240, help="alto para el modo preview")
     parser.add_argument("--no-input", action="store_true", help="no lee los botones (diagnóstico)")
+    parser.add_argument("--browse", nargs="?", const="", metavar="CARPETA",
+                        help="abre el explorador de archivos al arrancar")
+    parser.add_argument("--log-input", metavar="ARCHIVO",
+                        help="guarda los eventos de los botones en un fichero")
     parser.add_argument("--fps", type=int, default=0, help="fps del bucle de dibujo")
     parser.add_argument("track", nargs="?", help="pista concreta que se pone a sonar")
     args, _unknown = parser.parse_known_args(argv)
@@ -103,20 +166,38 @@ def main(argv=None) -> int:
         name for name, ok in backends.items() if ok and name != "framebuffer"), file=sys.stderr)
 
     reader = None
+    event_log = None
     if not args.no_input:
-        reader = InputReader()
+        log_path = args.log_input or config.input.log_path
+        if log_path:
+            event_log = _EventLog(log_path)
+            print("gpi-music: registrando los botones en %s" % log_path, file=sys.stderr)
+        reader = InputReader(
+            keymap=config.input.keymap,
+            repeat_delay=config.input.repeat_delay,
+            repeat_rate=config.input.repeat_rate,
+            events_log=event_log,
+        )
         if not reader.devices:
             print("gpi-music: no se encontraron dispositivos de entrada", file=sys.stderr)
+        else:
+            print("gpi-music: dispositivos: %s" % ", ".join(reader.devices), file=sys.stderr)
 
     from .app import App
 
     app = App(config, display, input_reader=reader, start_track=args.track)
+    if args.browse is not None:
+        app.start_browse = True
+        if args.browse:
+            app.browse_path = os.path.abspath(args.browse)
     app.start_scan()
     try:
         app.run()
     finally:
         if reader:
             reader.close()
+        if event_log:
+            event_log.close()
         display.close()
     return 0
 

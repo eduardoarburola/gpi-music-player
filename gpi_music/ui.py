@@ -234,7 +234,74 @@ class UI:
             self.draw.rectangle((x, pos, x + 2 * self.scale, pos + 18 * self.scale),
                                 fill=self.theme.accent)
 
-        self.footer([("Dir", "mover"), ("A", "reproducir"), ("B", "salir")])
+        self.footer([("Dir", "mover"), ("A", "reproducir"), ("B", "salir"), ("Y", "archivos")])
+
+    def draw_filebrowser(self, path: str, entries, index: int, status: str = "") -> None:
+        """Explorador de archivos: lista la carpeta ``path``."""
+        self.surface.clear(self.theme.background)
+        folder = os.path.basename(path.rstrip("/")) or "/"
+        self.header("ARCHIVOS", status or folder)
+
+        list_top = self.height // 6 + 4 * self.scale
+        row_h = 16 * self.scale
+        visible = max(1, (self.height - list_top - 16 * self.scale) // row_h)
+        pad = 4 * self.scale
+
+        if not entries:
+            self.text((self.width // 2, self.height // 2 - 6), "Carpeta vacía",
+                      font=self.font_bold, fill=self.theme.text_dim, anchor="mm")
+            self.text((self.width // 2, self.height // 2 + 12), path,
+                      font=self.font_small, fill=self.theme.text_dim, anchor="mm")
+            self.footer([("B", "atrás"), ("Y", "biblioteca")])
+            return
+
+        if index < self._scroll:
+            self._scroll = index
+        elif index >= self._scroll + visible:
+            self._scroll = index - visible + 1
+        self._scroll = max(0, min(self._scroll, max(0, len(entries) - visible)))
+
+        for row in range(visible):
+            pos = self._scroll + row
+            if pos >= len(entries):
+                break
+            entry = entries[pos]
+            top = list_top + row * row_h
+            selected = pos == index
+            if selected:
+                self.draw.rectangle((pad - 2, top, self.width - pad - 6, top + row_h - 2),
+                                    fill=self.theme.highlight)
+            color = self.theme.accent if selected else self.theme.text
+            if entry.is_dir:
+                color = self.theme.accent_dim if not selected else self.theme.accent
+            marker = "▶ " if selected else "  "
+            label = marker + entry.label
+            self.text_clipped((pad, top + 2 * self.scale), label, self.width - 2 * pad,
+                              font=self.font, fill=color)
+
+        if len(entries) > visible:
+            bar_h = self.height - list_top - 16 * self.scale
+            x = self.width - 4 * self.scale
+            self.draw.rectangle((x, list_top, x + 2 * self.scale, list_top + bar_h),
+                                fill=self.theme.highlight)
+            pos = list_top + int((bar_h - 20 * self.scale) * (index / max(1, len(entries) - 1)))
+            self.draw.rectangle((x, pos, x + 2 * self.scale, pos + 18 * self.scale),
+                                fill=self.theme.accent)
+
+        self.footer([("A", "abrir"), ("B", "atrás"), ("X", "todo"), ("Start", "añadir")])
+
+    def draw_debug(self, lines, title: str = "BOTONES") -> None:
+        """Pantalla de diagnóstico: los últimos eventos de entrada."""
+        self.surface.clear(self.theme.background)
+        self.header(title, "últimos eventos")
+        pad = 4 * self.scale
+        top = self.height // 6 + 8 * self.scale
+        rows = max(1, (self.height - top - 16 * self.scale) // (12 * self.scale))
+        for row, line in enumerate(list(lines)[-rows:]):
+            self.text_clipped((pad, top + row * 12 * self.scale), line,
+                              self.width - 2 * pad, font=self.font_small,
+                              fill=self.theme.text_dim)
+        self.footer([("B", "volver")])
 
     def _badge(self, source_label: str) -> str:
         if "MPD" in source_label:

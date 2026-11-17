@@ -12,6 +12,7 @@ Funciona en **Recalbox 9** y en **RetroPie 4**, y en ambos casos en la GPi Case 
 
 ![vista de biblioteca](docs/library.svg)
 ![reproduciendo](docs/playing.svg)
+![explorador de archivos](docs/browser.svg)
 
 > Las capturas se guardan en `docs/*.svg` (con el PNG embebido) para que se vean
 > directamente en el README. Para regenerarlas en PNG: `python3 -m gpi_music --preview
@@ -28,6 +29,10 @@ Funciona en **Recalbox 9** y en **RetroPie 4**, y en ambos casos en la GPi Case 
   sin instalar nada: si no hay tags se deduce «artista - título» del nombre del archivo.
 - **Controles con los botones**: cruceta para moverse, A para reproducir/pausar, B para salir,
   X/L/R para saltar de pista, Start para el menú de opciones.
+- **Explorador de archivos**: recorre la microSD (y cualquier montaje de red) con la cruceta,
+  reproduce lo que encuentres y añade la carpeta a la biblioteca con un botón.
+- **Diagnóstico de botones**: una pantalla que muestra los eventos crudos del mando, para
+  ver cómo llega cada botón en tu consola.
 - **Menú de opciones**: aleatorio, repetir, volumen, reescanear la biblioteca y salir.
 - **Sin dependencias que instalar**: dibuja sobre el framebuffer con Pillow si está, o con
   pygame/SDL2 si no (que es el caso de Recalbox), leyendo los botones por evdev.
@@ -110,7 +115,7 @@ Todo lo anterior está probado sobre una RetroFlag GPi Case con Recalbox 9.2.3 �
 | Python | 3.11.3, sin Pillow → backend de dibujo con **pygame 2.2.0** |
 | Driver de vídeo | SDL solo trae el driver **RPI** (Dispmanx): sin `fbcon`, `kmsdrm` ni `dummy` |
 | Pantalla | framebuffer 32 bpp a 320×240, el reproductor dibuja a pantalla completa |
-| Botones | joystick virtual «Microsoft X-Box 360 pad» en `/dev/input/event0` |
+| Botones | joystick virtual «Microsoft X-Box 360 pad» en `/dev/input/event0` (así lo emula `xboxdrv` en el GPi Case) |
 | Audio | `mpv`, `mpg123` y `ffplay` disponibles; salida ALSA `bcm2835` |
 | Registro en ES | ES carga `/recalbox/share/system/.emulationstation/systemlist.xml`, crea el sistema «Música» y genera su `gamelist.xml` |
 
@@ -119,17 +124,60 @@ Todo lo anterior está probado sobre una RetroFlag GPi Case con Recalbox 9.2.3 �
 
 ## Controles
 
-| Botón | En la biblioteca | Reproduciendo |
-|-------|------------------|---------------|
-| Cruceta ↑↓ | mover la selección | — |
-| Cruceta ←→ | — | saltar ±15 s |
-| A / Intro | reproducir la canción | pausar / seguir |
-| B / Retroceso | salir a EmulationStation | volver a la biblioteca |
-| X / L / R | pista anterior / siguiente | pista anterior / siguiente |
-| Start / Select | menú de opciones | menú de opciones |
+| Botón | En la biblioteca | Reproduciendo | En el explorador |
+|-------|------------------|---------------|-------------------|
+| Cruceta ↑↓ | mover la selección | — | mover la selección |
+| Cruceta ←→ | — | saltar ±15 s | — |
+| A / Intro | reproducir la canción | pausar / seguir | abrir carpeta o reproducir |
+| B / Retroceso | salir a EmulationStation | volver a la biblioteca | subir un nivel |
+| X | — | — | mostrar/ocultar todo |
+| Y / Select | abrir el explorador de archivos | abrir el explorador | volver a la biblioteca |
+| L / R | pista anterior / siguiente | pista anterior / siguiente | — |
+| Start | menú de opciones | menú de opciones | menú de opciones (añadir carpeta) |
+
+> En el GPi Case el mando llega emulado por `xboxdrv` como «Microsoft X-Box 360 pad» y la
+> cruceta se reporta como un **hat** (`ABS_HAT0X`/`ABS_HAT0Y`), no como ejes: el reproductor
+> entiende hat, ejes, botones de cruceta y teclas de flecha, con repetición al mantener pulsado.
 
 Si tu consola asigna las teclas de otra forma, puedes reasignarlas en
-`~/.config/gpi-music/config.json` (mapa de códigos de tecla → acción).
+`~/.config/gpi-music/config.json` (mapa de códigos de Linux → acción).
+
+## Explorador de archivos
+
+Con **Y** (o **Select**) desde la biblioteca se abre el explorador:
+
+- **A** entra en la carpeta marcada o reproduce el archivo de audio;
+- **B** sube un nivel (en la raíz vuelve a la biblioteca);
+- **X** alterna entre mostrar solo audio o enseñarlo todo;
+- **Start → «Añadir carpeta a la biblioteca»** guarda la carpeta actual en la configuración y
+  vuelve a escanear, de modo que esa carpeta aparece ya en la lista de canciones.
+
+Desde SSH se puede abrir directamente en una carpeta:
+
+```bash
+gpi-music --browse /recalbox/share/roms
+```
+
+## Diagnóstico de los botones
+
+Si algún botón no hace nada, la opción **Start → «Diagnóstico de botones»** muestra los
+últimos eventos que llegan del mando (tipo, código y valor). Es la forma rápida de saber si
+la cruceta llega como hat, como eje o como botones.
+
+Para dejar el registro en un fichero y verlo por SSH:
+
+```bash
+gpi-music --log-input /recalbox/share/system/gpi-music/botones.log
+```
+
+Ahí queda una línea por evento, por ejemplo:
+
+```
+KEY  BTN_SOUTH(A)     pulsado
+ABS  ABS_HAT0X        -1
+```
+
+Con esos códigos se puede reasignar cualquier botón en `config.json`.
 
 ## Configuración
 
@@ -154,9 +202,23 @@ Los valores por defecto:
     "alsa_mixer": "",
     "seek_step": 15
   },
-  "ui": { "theme": "pixel", "font_size": 15, "show_cover": true, "fps": 20 }
+  "ui": { "theme": "pixel", "font_size": 15, "show_cover": true, "fps": 20 },
+  "input": {
+    "keymap": {},
+    "repeat_delay": 0.45,
+    "repeat_rate": 0.12,
+    "log_path": ""
+  }
 }
 ```
+
+La sección `input` es opcional:
+
+- `keymap`: reasigna botones, con el **código de Linux** como texto. Por ejemplo, si en tu
+  consola el botón «archivos» es el `0x134` (308), pon `{"308": "browse"}`;
+- `repeat_delay` / `repeat_rate`: segundos hasta que la cruceta empieza a repetirse y ritmo
+  entre repeticiones;
+- `log_path`: fichero donde volcar los eventos de entrada (equivale a `--log-input`).
 
 Las rutas por defecto se ajustan solas a la plataforma (Recalbox o RetroPie) en el primer arranque.
 
@@ -191,6 +253,9 @@ indica el mezclador de ALSA:
 ```bash
 gpi-music --scan                    # lista la biblioteca y las fuentes detectadas
 gpi-music --preview /tmp/ux.png     # guarda una captura de la interfaz
+gpi-music --preview /tmp/ux.png --browser   # captura del explorador de archivos
+gpi-music --browse /recalbox/share/roms     # abre el explorador en una carpeta
+gpi-music --log-input /tmp/botones.log      # guarda los eventos de los botones
 gpi-music --config /ruta/config.json
 ```
 

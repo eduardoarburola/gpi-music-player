@@ -123,7 +123,12 @@ export PYTHONUNBUFFERED=1
 # Si el reproductor se lanza desde EmulationStation no debe abrir una consola.
 # SDL_VIDEODRIVER se deja como lo trouve el sistema: en la GPi Case el
 # driver disponible es "RPI" y SDL lo selecciona solo.
-exec "$PYTHON_BIN" -m gpi_music "\$@"
+# Los eventos de los botones se guardan en un fichero para poder diagnosticarlos.
+LOG_FILE="$INSTALL_DIR/botones.log"
+if [ ! -w "$INSTALL_DIR" ]; then
+    LOG_FILE="\${TMPDIR:-/tmp}/gpi-music-botones.log"
+fi
+exec "$PYTHON_BIN" -m gpi_music --log-input "\$LOG_FILE" "\$@"
 LAUNCHER
     chmod 0755 "$1"
 }

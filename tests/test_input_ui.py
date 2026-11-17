@@ -1,11 +1,13 @@
 """Tests de la entrada (evdev) y del renderizado."""
 
 import struct
+import time
 import unittest
 
 from gpi_music.fb import Surface
 from gpi_music.input import (
     ACTION_BACK,
+    ACTION_BROWSE,
     ACTION_CONFIRM,
     ACTION_DOWN,
     ACTION_LEFT,
@@ -60,14 +62,71 @@ class TestKeymap(unittest.TestCase):
         self.assertEqual(self.reader._translate(1, 0x137, 1, 0), ACTION_NEXT)
 
     def test_joystick_axes(self):
-        self.assertEqual(self.reader._translate(3, 0, 0, 0), ACTION_LEFT)
-        self.assertEqual(self.reader._translate(3, 0, 65535, 0), ACTION_RIGHT)
-        self.assertEqual(self.reader._translate(3, 1, 0, 0), ACTION_UP)
-        self.assertEqual(self.reader._translate(3, 1, 65535, 0), ACTION_DOWN)
+        # El centro se detecta solo (rango por defecto de 16 bits con signo).
+        self.assertIsNone(self.reader._translate(3, 0, 0, 0))
+        self.assertEqual(self.reader._translate(3, 0, -32768, 0), ACTION_LEFT)
+        self.assertEqual(self.reader._translate(3, 0, 32767, 0), ACTION_RIGHT)
+        # Repetir el mismo valor no vuelve a disparar la acción.
+        self.assertIsNone(self.reader._translate(3, 0, 32767, 0))
+        self.assertEqual(self.reader._translate(3, 1, -32768, 0), ACTION_UP)
+        self.assertEqual(self.reader._translate(3, 1, 32767, 0), ACTION_DOWN)
+
+    def test_hat_dpad(self):
+        # La cruceta del GPi Case llega como hat (ABS_HAT0X/ABS_HAT0Y).
+        self.assertIsNone(self.reader._translate(3, 0x10, 0, 0))
+        self.assertEqual(self.reader._translate(3, 0x10, -1, 0), ACTION_LEFT)
+        self.assertEqual(self.reader._translate(3, 0x10, 1, 0), ACTION_RIGHT)
+        self.assertIsNone(self.reader._translate(3, 0x10, 0, 0))
+        self.assertEqual(self.reader._translate(3, 0x11, -1, 0), ACTION_UP)
+        self.assertEqual(self.reader._translate(3, 0x11, 1, 0), ACTION_DOWN)
+
+    def test_dpad_buttons(self):
+        self.assertEqual(self.reader._translate(1, 0x120, 1, 0), ACTION_UP)
+        self.assertEqual(self.reader._translate(1, 0x121, 1, 0), ACTION_DOWN)
+        self.assertEqual(self.reader._translate(1, 0x122, 1, 0), ACTION_LEFT)
+        self.assertEqual(self.reader._translate(1, 0x123, 1, 0), ACTION_RIGHT)
+
+    def test_gamepad_mapping(self):
+        self.assertEqual(self.reader._translate(1, 0x130, 1, 0), ACTION_CONFIRM)   # A
+        self.assertEqual(self.reader._translate(1, 0x131, 1, 0), ACTION_BACK)      # B
+        self.assertEqual(self.reader._translate(1, 0x133, 1, 0), ACTION_TOGGLE)    # Y
+        self.assertEqual(self.reader._translate(1, 0x134, 1, 0), ACTION_BROWSE)    # X
+        self.assertEqual(self.reader._translate(1, 0x13A, 1, 0), ACTION_BROWSE)    # Select
+        self.assertEqual(self.reader._translate(1, 0x13B, 1, 0), ACTION_MENU)      # Start
 
     def test_custom_keymap_overrides(self):
         reader = InputReader(devices=[], keymap={"103": "toggle"})
         self.assertEqual(reader._translate(1, 103, 1, 0), ACTION_TOGGLE)
+
+    def test_held_direction_repeats(self):
+        reader = InputReader(devices=[], repeat_delay=0.05, repeat_rate=0.02)
+        reader._translate(3, 0x10, -1, 0)
+        time.sleep(0.09)
+        self.assertEqual(reader._repeats(), [ACTION_LEFT])
+        self.assertEqual(reader._repeats(), [])  # aún no ha pasado el ritmo
+        time.sleep(0.03)
+        self.assertEqual(reader._repeats(), [ACTION_LEFT])
+
+    def test_axis_without_center_does_not_repeat(self):
+        reader = InputReader(devices=[], repeat_delay=0.05, repeat_rate=0.02)
+        reader._translate(3, 0, -32768, 0)
+        time.sleep(0.09)
+        self.assertEqual(reader._repeats(), [])
+
+    def test_events_history(self):
+        reader = InputReader(devices=[])
+        reader._translate(1, 0x130, 1, 0)
+        reader._translate(3, 0x10, -1, 0)
+        self.assertTrue(reader.events)
+        self.assertIn("BTN_SOUTH", reader.events[0])
+        self.assertIn("ABS_HAT0X", reader.events[1])
+
+    def test_event_log_callback(self):
+        lines = []
+        reader = InputReader(devices=[], events_log=lines.append)
+        reader._translate(1, 0x131, 1, 0)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("BTN_EAST", lines[0])
 
 
 class TestRendering(unittest.TestCase):
@@ -103,6 +162,29 @@ class TestRendering(unittest.TestCase):
         surface = Surface(device="", width=320, height=240)
         ui = UI(surface)
         ui.draw_options(["Uno", "Dos"], 1)
+
+    def test_filebrowser_view_renders(self):
+        from gpi_music.browser import Entry
+
+        surface = Surface(device="", width=320, height=240)
+        ui = UI(surface)
+        entries = [
+            Entry("/media", "..", True, False),
+            Entry("/media/Music", "Music", True, False),
+            Entry("/media/cancion.mp3", "cancion.mp3", False, True),
+        ]
+        ui.draw_filebrowser("/media", entries, 2)
+        self.assertEqual(surface.image.size, (320, 240))
+
+    def test_filebrowser_empty_renders(self):
+        surface = Surface(device="", width=320, height=240)
+        ui = UI(surface)
+        ui.draw_filebrowser("/media", [], 0)
+
+    def test_debug_view_renders(self):
+        surface = Surface(device="", width=320, height=240)
+        ui = UI(surface)
+        ui.draw_debug(["dispositivos: event0", "KEY  BTN_SOUTH(A)  pulsado"])
 
     def test_scale_for_big_screen(self):
         surface = Surface(device="", width=640, height=480)

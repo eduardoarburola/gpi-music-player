@@ -90,6 +90,20 @@ class PlayerConfig:
 
 
 @dataclass
+class InputConfig:
+    """Cómo se leen los botones."""
+
+    # Mapa de acciones por código de Linux (como texto). Ej: {"315": "browse"}.
+    keymap: Dict[str, str] = field(default_factory=dict)
+    # Segundos hasta que una dirección mantiene pulsada empieza a repetirse.
+    repeat_delay: float = 0.45
+    # Segundos entre repeticiones.
+    repeat_rate: float = 0.12
+    # Fichero donde volcar los eventos de entrada (para diagnosticar).
+    log_path: str = ""
+
+
+@dataclass
 class UiConfig:
     """Cómo se ve."""
 
@@ -107,6 +121,7 @@ class Config:
     library: LibraryConfig = field(default_factory=LibraryConfig)
     player: PlayerConfig = field(default_factory=PlayerConfig)
     ui: UiConfig = field(default_factory=UiConfig)
+    input: InputConfig = field(default_factory=InputConfig)
 
     # -------------------------------------------------------------- carga ---
     @classmethod
@@ -172,7 +187,8 @@ def _from_dict(data: Dict[str, Any]) -> Config:
     lib = LibraryConfig(**_filter(LibraryConfig, data.get("library", {})))
     pla = PlayerConfig(**_filter(PlayerConfig, data.get("player", {})))
     ui = UiConfig(**_filter(UiConfig, data.get("ui", {})))
-    return Config(library=lib, player=pla, ui=ui)
+    inp = InputConfig(**_filter(InputConfig, data.get("input", {})))
+    return Config(library=lib, player=pla, ui=ui, input=inp)
 
 
 def _filter(cls, values: Any) -> Dict[str, Any]:
