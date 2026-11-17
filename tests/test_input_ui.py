@@ -13,6 +13,7 @@ from gpi_music.input import (
     ACTION_LEFT,
     ACTION_MENU,
     ACTION_NEXT,
+    ACTION_PREV,
     ACTION_RIGHT,
     ACTION_TOGGLE,
     ACTION_UP,
@@ -97,6 +98,30 @@ class TestKeymap(unittest.TestCase):
     def test_custom_keymap_overrides(self):
         reader = InputReader(devices=[], keymap={"103": "toggle"})
         self.assertEqual(reader._translate(1, 103, 1, 0), ACTION_TOGGLE)
+
+    def test_gpio_keys_mapping(self):
+        # Asignación típica del GPi Case con gpio-keys.
+        self.assertEqual(self.reader._translate(1, 103, 1, 0), ACTION_UP)
+        self.assertEqual(self.reader._translate(1, 108, 1, 0), ACTION_DOWN)
+        self.assertEqual(self.reader._translate(1, 105, 1, 0), ACTION_LEFT)
+        self.assertEqual(self.reader._translate(1, 106, 1, 0), ACTION_RIGHT)
+        self.assertEqual(self.reader._translate(1, 30, 1, 0), ACTION_CONFIRM)   # A
+        self.assertEqual(self.reader._translate(1, 14, 1, 0), ACTION_BACK)      # B
+        self.assertEqual(self.reader._translate(1, 45, 1, 0), ACTION_TOGGLE)    # X
+        self.assertEqual(self.reader._translate(1, 31, 1, 0), ACTION_BROWSE)    # Y
+        self.assertEqual(self.reader._translate(1, 29, 1, 0), ACTION_BROWSE)    # Select
+        self.assertEqual(self.reader._translate(1, 15, 1, 0), ACTION_MENU)      # Start
+        self.assertEqual(self.reader._translate(1, 42, 1, 0), ACTION_PREV)      # L
+        self.assertEqual(self.reader._translate(1, 54, 1, 0), ACTION_NEXT)      # R
+
+    def test_duplicate_devices_do_not_double_step(self):
+        # La misma dirección puede llegar como tecla y como hat.
+        reader = InputReader(devices=[])
+        self.assertEqual(reader._translate(1, 103, 1, 0), ACTION_UP)
+        self.assertIsNone(reader._translate(3, 0x11, -1, 1))
+        # Al soltar el hat, la tecla sigue manteniendo la acción.
+        self.assertIsNone(reader._translate(3, 0x11, 0, 1))
+        self.assertEqual(reader._translate(1, 103, 0, 0), None)
 
     def test_held_direction_repeats(self):
         reader = InputReader(devices=[], repeat_delay=0.05, repeat_rate=0.02)

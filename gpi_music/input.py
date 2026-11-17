@@ -171,6 +171,8 @@ default_keymap: Dict[str, str] = {
     str(KEY_TAB): ACTION_MENU,
     str(KEY_C): ACTION_TOGGLE,
     str(KEY_X): ACTION_TOGGLE,
+    str(KEY_S): ACTION_BROWSE,       # «Y» del GPi Case en gpio-keys
+    str(KEY_LEFTCTRL): ACTION_BROWSE,  # «Select» del GPi Case en gpio-keys
     str(KEY_Y): ACTION_NEXT,
     str(KEY_N): ACTION_NEXT,
     str(KEY_PAGEUP): ACTION_PREV,
@@ -310,6 +312,7 @@ class InputReader:
         self._abs_range: Dict[Tuple[int, int], Optional[Tuple[int, int]]] = {}
         self._neutral_seen = set()
         self._held: Dict[str, Tuple[float, bool]] = {}
+        self._held_by: Dict[str, set] = {}
         self._repeat_emit: Dict[str, float] = {}
         self.repeat_delay = max(0.05, float(repeat_delay))
         self.repeat_rate = max(0.03, float(repeat_rate))
@@ -342,12 +345,25 @@ class InputReader:
             except Exception:  # noqa: BLE001 - el log nunca debe romper la app
                 pass
 
-    def _press(self, action: str, repeatable: bool = True) -> None:
+    def _press(self, action: str, fd: int, repeatable: bool = True) -> bool:
+        """Marca una acción como pulsada. Devuelve False si ya venía de otro mando."""
+        holders = self._held_by.setdefault(action, set())
+        if holders and fd not in holders:
+            # La misma dirección llega de dos dispositivos (teclado y hat):
+            # solo cuenta la primera, para no mover dos pasos.
+            return False
         now = time.monotonic()
+        holders.add(fd)
         self._held[action] = (now, repeatable)
         self._repeat_emit[action] = now
+        return True
 
-    def _release(self, action: str) -> None:
+    def _release(self, action: str, fd: int) -> None:
+        holders = self._held_by.get(action)
+        if holders:
+            holders.discard(fd)
+            if holders:
+                return
         self._held.pop(action, None)
         self._repeat_emit.pop(action, None)
 
@@ -443,7 +459,7 @@ class InputReader:
                 if pressed is not None:
                     pressed.discard(code)
                 if action:
-                    self._release(action)
+                    self._release(action, fd)
                 return None
             if value not in (1, 2):  # 1 = pulsado, 2 = repetición del teclado
                 return None
@@ -451,8 +467,9 @@ class InputReader:
             pressed.add(code)
             if action:
                 # El teclado ya repite solo; los botones de mando no.
-                if code >= 0x100:
-                    self._press(action)
+                repeatable = code >= 0x100
+                if not self._press(action, fd, repeatable):
+                    return None
                 return action
             return None
         if etype == EV_ABS:
@@ -476,14 +493,15 @@ class InputReader:
         self._dir_state[fd][code] = direction
         if direction == 0:
             # Al volver al centro se suelta la dirección.
-            self._release(actions[0])
-            self._release(actions[1])
+            self._release(actions[0], fd)
+            self._release(actions[1], fd)
             return None
         action = actions[0] if direction < 0 else actions[1]
         # Solo repetimos un eje si ya hemos visto el centro: así un mando mal
         # reportado (siempre en 0) no genera un scroll infinito.
         repeatable = code in (ABS_HAT0X, ABS_HAT0Y) or (fd, code) in self._neutral_seen
-        self._press(action, repeatable)
+        if not self._press(action, fd, repeatable):
+            return None
         return action
 
     def close(self) -> None:
