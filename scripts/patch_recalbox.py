@@ -92,7 +92,6 @@ def build_system(path: str, command: str, theme: str) -> ET.Element:
         "path": path,
         "theme": theme,
         "extensions": EXTENSIONS,
-        "extension.types": "*=file",
         "icon": ICON,
         "downloader": "0",
         "command": command,
@@ -165,8 +164,36 @@ def patch_systemlist(target: str, init: str, path: str, command: str, theme: str
     return "actualizado (copia: %s)" % os.path.basename(backup)
 
 
+def _music_block_pattern() -> "re.Pattern":
+    return re.compile(
+        r"[ \t]*<system>(?:(?!</system>).)*?<name>\s*%s\s*</name>.*?</system>\s*?" % SYSTEM_NAME,
+        re.DOTALL,
+    )
+
+
+def remove_es_systems(target: str) -> str:
+    """Quita el bloque <system> de música de un es_systems.cfg."""
+    if not os.path.isfile(target):
+        return "no-existe"
+    try:
+        with open(target, "r", encoding="utf-8") as fh:
+            content = fh.read()
+
+        new_content, count = _music_block_pattern().subn("", content)
+        if not count:
+            return "sin cambios"
+
+        backup = "%s.bak-%s" % (target, time.strftime("%Y%m%d%H%M%S"))
+        shutil.copy2(target, backup)
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(new_content)
+    except OSError as exc:
+        return "error (%s)" % exc
+    return "eliminado (copia: %s)" % os.path.basename(backup)
+
+
 def patch_es_systems(target: str, path: str, command: str) -> str:
-    """Añade el sistema a un es_systems.cfg clásico (idempotente)."""
+    """Añade (o actualiza) el sistema en un es_systems.cfg clásico."""
     block = ES_SYSTEMS_TEMPLATE.format(
         fullname=FULL_NAME, path=path, extensions=EXTENSIONS, command=command
     )
@@ -179,8 +206,10 @@ def patch_es_systems(target: str, path: str, command: str) -> str:
 
         with open(target, "r", encoding="utf-8") as fh:
             content = fh.read()
-        if "<name>%s</name>" % SYSTEM_NAME in content:
-            return "ya-existe"
+
+        # Si ya había un bloque se sustituye, para que un cambio de comando
+        # (por ejemplo el prefijo /bin/sh) no se quede obsoleto.
+        content, replaced = _music_block_pattern().subn("", content)
 
         backup = "%s.bak-%s" % (target, time.strftime("%Y%m%d%H%M%S"))
         shutil.copy2(target, backup)
@@ -193,32 +222,8 @@ def patch_es_systems(target: str, path: str, command: str) -> str:
             fh.write(content)
     except OSError as exc:
         return "error (%s)" % exc
-    return "actualizado (copia: %s)" % os.path.basename(backup)
-
-
-def remove_es_systems(target: str) -> str:
-    """Quita el bloque <system> de música de un es_systems.cfg."""
-    if not os.path.isfile(target):
-        return "no-existe"
-    try:
-        with open(target, "r", encoding="utf-8") as fh:
-            content = fh.read()
-
-        pattern = re.compile(
-            r"[ \t]*<system>.*?<name>\s*%s\s*</name>.*?</system>\s*?" % SYSTEM_NAME,
-            re.DOTALL,
-        )
-        new_content, count = pattern.subn("", content)
-        if not count:
-            return "sin cambios"
-
-        backup = "%s.bak-%s" % (target, time.strftime("%Y%m%d%H%M%S"))
-        shutil.copy2(target, backup)
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write(new_content)
-    except OSError as exc:
-        return "error (%s)" % exc
-    return "eliminado (copia: %s)" % os.path.basename(backup)
+    return ("actualizado" if replaced else "añadido") + \
+        " (copia: %s)" % os.path.basename(backup)
 
 
 def main(argv=None) -> int:

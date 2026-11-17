@@ -96,6 +96,27 @@ El tema del sistema es `music`, que no viene con Recalbox: se usará el tema por
 prefieres que use el logo de otro sistema, edita el atributo `theme="music"` del bloque
 `<system>` en `systemlist.xml` (por ejemplo, `theme="ports"`).
 
+> **El share está en exFAT y no permite ejecutar ficheros.** El comando registrado en
+> EmulationStation es por eso `/bin/sh …/gpi-music %ROM%`, y desde SSH hay que invocar el
+> lanzador igual: `sh /recalbox/share/system/gpi-music/gpi-music --scan`.
+
+## Verificado en una GPi Case real
+
+Todo lo anterior está probado sobre una RetroFlag GPi Case con Recalbox 9.2.3 «Pulstar»
+(Raspberry Pi Zero, 320×240, 512 MB):
+
+| | Resultado en la consola |
+|---|---|
+| Python | 3.11.3, sin Pillow → backend de dibujo con **pygame 2.2.0** |
+| Driver de vídeo | SDL solo trae el driver **RPI** (Dispmanx): sin `fbcon`, `kmsdrm` ni `dummy` |
+| Pantalla | framebuffer 32 bpp a 320×240, el reproductor dibuja a pantalla completa |
+| Botones | joystick virtual «Microsoft X-Box 360 pad» en `/dev/input/event0` |
+| Audio | `mpv`, `mpg123` y `ffplay` disponibles; salida ALSA `bcm2835` |
+| Registro en ES | ES carga `/recalbox/share/system/.emulationstation/systemlist.xml`, crea el sistema «Música» y genera su `gamelist.xml` |
+
+> Si prefieres que la consola arranque directamente en «Música», añade
+> `emulationstation.selectedsystem=music` a `/recalbox/share/system/recalbox.conf`.
+
 ## Controles
 
 | Botón | En la biblioteca | Reproduciendo |

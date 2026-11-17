@@ -121,7 +121,8 @@ set -euo pipefail
 export PYTHONPATH="$INSTALL_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
 export PYTHONUNBUFFERED=1
 # Si el reproductor se lanza desde EmulationStation no debe abrir una consola.
-export SDL_VIDEODRIVER="\${SDL_VIDEODRIVER:-}"
+# SDL_VIDEODRIVER se deja como lo trouve el sistema: en la GPi Case el
+# driver disponible es "RPI" y SDL lo selecciona solo.
 exec "$PYTHON_BIN" -m gpi_music "\$@"
 LAUNCHER
     chmod 0755 "$1"
@@ -161,9 +162,12 @@ fi
 # ---------------------------------------------------- 5. EmulationStation ---
 if [ "$PLATFORM" = "recalbox" ]; then
     info "Registrando el sistema «Música» en Recalbox"
+    # El share de Recalbox está en exFAT (fmask=0133): los ficheros nunca
+    # quedan con permiso de ejecución, así que se lanzan con «/bin/sh».
+    ES_COMMAND="/bin/sh $LAUNCHER_PATH %ROM%"
     if "$PYTHON_BIN" "$INSTALL_DIR/scripts/patch_recalbox.py" \
         --init "$ES_INIT" --target "$ES_TARGET" --es-systems "$ES_SYSTEMS" \
-        --command "$LAUNCHER_PATH %ROM%" --roms "$ROMS_DIR"; then
+        --command "$ES_COMMAND" --roms "$ROMS_DIR"; then
         ok "Sistema «Música» añadido"
     else
         warn "No se pudo registrar el sistema automáticamente"
@@ -218,7 +222,12 @@ echo
 echo "  Siguientes pasos:"
 echo "   1. Copia tu música en:  $ROMS_DIR"
 echo "   2. Reinicia EmulationStation para ver la sección «Música»."
-echo "   3. Comprueba la biblioteca desde SSH con:  gpi-music --scan"
+if [ "$PLATFORM" = "recalbox" ]; then
+    echo "   3. Comprueba la biblioteca con:  sh $LAUNCHER_PATH --scan"
+    echo "      (el share está en exFAT y no permite ejecutar ficheros)"
+else
+    echo "   3. Comprueba la biblioteca desde SSH con:  gpi-music --scan"
+fi
 echo
 echo "  Configuración:  ~/.config/gpi-music/config.json"
 echo "  (rutas montadas en /mnt, servidores MPD, volumen…)"

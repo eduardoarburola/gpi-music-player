@@ -75,8 +75,12 @@ class PygameDisplay:
 
         # En la consola no hay X ni Wayland: hay que forzar el driver del
         # framebuffer. Si ya hay uno definido en el entorno, se respeta.
+        #
+        # La imagen de Recalbox para la GPi Case compila SDL con el driver
+        # "RPI" (Dispmanx) y sin fbcon/kmsdrm/dummy, así que lo primero es
+        # dejar que SDL elija solo; los drivers de framebuffer son el plan B.
         forced = os.environ.get("SDL_VIDEODRIVER")
-        candidates = [forced] if forced else ["fbcon", "kmsdrm", None]
+        candidates = [forced] if forced else [None, "fbcon", "kmsdrm"]
         for driver in candidates:
             if driver:
                 os.environ["SDL_VIDEODRIVER"] = driver
@@ -122,13 +126,71 @@ class PygameDisplay:
             pass
 
 
+class PygameMemoryDisplay:
+    """Pantalla en memoria (sin tocar el framebuffer).
+
+    Sirve para las vistas previas y para el modo de pruebas: crea una Surface
+    de pygame normal, sin inicializar el vídeo, así que funciona incluso en
+    compilaciones de SDL sin driver de vídeo (el ``dummy`` de Recalbox, por
+    ejemplo, no está compilado).
+    """
+
+    def __init__(self, width: int = 320, height: int = 240) -> None:
+        import pygame
+
+        if shim.HAVE_PIL:
+            raise DisplayError("el backend pygame no está disponible (Pillow tiene prioridad)")
+
+        self.width = width or 320
+        self.height = height or 240
+        self._pygame = pygame
+
+        if not self._pygame.font.get_init():
+            self._pygame.font.init()
+
+        self._surface = self._pygame.Surface((self.width, self.height))
+        self._surface.fill((0, 0, 0))
+
+        self.image = shim.Image.from_surface(self._surface)
+        self.draw = shim.ImageDraw.Draw(self.image)
+
+    @property
+    def size(self):
+        return (self.width, self.height)
+
+    def present(self) -> None:
+        """En memoria no hay nada que presentar."""
+
+    def clear(self, color=(0, 0, 0)) -> None:
+        self._surface.fill(tuple(color))
+
+    def save_png(self, path: str) -> None:
+        self._pygame.image.save(self._surface, path)
+
+    def close(self) -> None:
+        try:
+            self._pygame.font.quit()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def create_display(fb_device: str = "/dev/fb0", prefer: Optional[str] = None,
                    width: int = 0, height: int = 0):
     """Crea la pantalla con el mejor backend disponible.
 
-    ``prefer`` puede ser "pil", "pygame" o "auto" (por defecto).
+    ``prefer`` puede ser "pil", "pygame" o "auto" (por defecto).  Si
+    ``fb_device`` es una cadena vacía se fuerza el modo memoria (sin tocar la
+    pantalla real), que es el que usan las vistas previas.
     """
     prefer = (prefer or "auto").lower()
+    memory_mode = not fb_device
+
+    if memory_mode:
+        if shim.HAVE_PIL:
+            from .fb import Surface
+
+            return Surface(device="", width=width or 320, height=height or 240)
+        return PygameMemoryDisplay(width=width or 320, height=height or 240)
 
     if prefer in ("auto", "pil") and shim.HAVE_PIL:
         from .fb import Surface
@@ -152,6 +214,4 @@ def create_display(fb_device: str = "/dev/fb0", prefer: Optional[str] = None,
 
         return Surface(device="", width=width or 320, height=height or 240)
 
-    raise DisplayError(
-        "no hay backend de dibujo disponible (instala Pillow o pygame)"
-    )
+    return PygameMemoryDisplay(width=width or 320, height=height or 240)

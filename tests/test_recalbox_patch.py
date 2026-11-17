@@ -90,7 +90,6 @@ class TestPatchRecalbox(unittest.TestCase):
         self.assertEqual(descriptor.get("path"), "%ROOT%/music")
         self.assertEqual(descriptor.get("theme"), "music")
         self.assertIn(".mp3", descriptor.get("extensions"))
-        self.assertEqual(descriptor.get("extension.types"), "*=file")
         self.assertEqual(descriptor.get("downloader"), "0")
         self.assertIn("%ROM%", descriptor.get("command"))
         # Un sistema normal no es un puerto: no debe llevar port/readonly.
@@ -155,11 +154,14 @@ class TestPatchRecalbox(unittest.TestCase):
         with open(cfg, encoding="utf-8") as fh:
             content = fh.read()
         self.assertIn("<name>music</name>", content)
-        # Segunda vez no debe duplicar.
-        result = patch_recalbox.patch_es_systems(cfg, "/recalbox/share/roms/music", "/cmd %ROM%")
-        self.assertEqual(result, "ya-existe")
+        # Segunda vez no debe duplicar, sino actualizar el comando.
+        result = patch_recalbox.patch_es_systems(cfg, "/recalbox/share/roms/music", "/nuevo %ROM%")
+        self.assertIn("actualizado", result)
         with open(cfg, encoding="utf-8") as fh:
-            self.assertEqual(fh.read().count("<name>music</name>"), 1)
+            content = fh.read()
+        self.assertEqual(content.count("<name>music</name>"), 1)
+        self.assertIn("/nuevo %ROM%", content)
+        self.assertNotIn("/cmd %ROM%", content)
 
     def test_remove_es_systems_cfg(self):
         cfg = os.path.join(self.tmp, "es_systems.cfg")
