@@ -115,7 +115,7 @@ Todo lo anterior está probado sobre una RetroFlag GPi Case con Recalbox 9.2.3 �
 | Python | 3.11.3, sin Pillow → backend de dibujo con **pygame 2.2.0** |
 | Driver de vídeo | SDL solo trae el driver **RPI** (Dispmanx): sin `fbcon`, `kmsdrm` ni `dummy` |
 | Pantalla | framebuffer 32 bpp a 320×240, el reproductor dibuja a pantalla completa |
-| Botones | joystick virtual «Microsoft X-Box 360 pad» en `/dev/input/event0` (así lo emula `xboxdrv` en el GPi Case) |
+| Botones | joystick virtual «Microsoft X-Box 360 pad» en `/dev/input/event0` (así lo emula `xboxdrv` en el GPi Case); la cruceta llega como *hat* |
 | Audio | `mpv`, `mpg123` y `ffplay` disponibles; salida ALSA `bcm2835` |
 | Registro en ES | ES carga `/recalbox/share/system/.emulationstation/systemlist.xml`, crea el sistema «Música» y genera su `gamelist.xml` |
 
@@ -138,6 +138,25 @@ Todo lo anterior está probado sobre una RetroFlag GPi Case con Recalbox 9.2.3 �
 > En el GPi Case el mando llega emulado por `xboxdrv` como «Microsoft X-Box 360 pad» y la
 > cruceta se reporta como un **hat** (`ABS_HAT0X`/`ABS_HAT0Y`), no como ejes: el reproductor
 > entiende hat, ejes, botones de cruceta y teclas de flecha, con repetición al mantener pulsado.
+
+### Códices reales medidos en la GPi Case
+
+Estos son los eventos que emite el mando de verdad (medidos con `espiar.py` sobre
+`/dev/input/event0`):
+
+| Botón | Evento | Código | Acción por defecto |
+|-------|--------|--------|--------------------|
+| Cruceta ← → | `ABS_HAT0X` | −1 / 0 / +1 | izquierda / derecha |
+| Cruceta ↑ ↓ | `ABS_HAT0Y` | −1 / 0 / +1 | arriba / abajo |
+| A | `EV_KEY BTN_SOUTH` | 0x130 | confirmar |
+| B | `EV_KEY BTN_EAST` | 0x131 | atrás |
+| X | `EV_KEY BTN_X/NORTH` | 0x133 | alternar |
+| Y | `EV_KEY BTN_Y/WEST` | 0x134 | archivos |
+| L / R | `EV_KEY BTN_TL` / `BTN_TR` | 0x136 / 0x137 | anterior / siguiente |
+| Start / Select | `EV_KEY BTN_START` / `BTN_SELECT` | 0x13B / 0x13A | menú / archivos |
+
+> Antes de este arreglo el lector solo entendía `ABS_X`/`ABS_Y`, así que **la cruceta no
+> generaba ninguna acción**: por eso no se podía navegar. Ahora el *hat* está soportado.
 
 Si tu consola asigna las teclas de otra forma, puedes reasignarlas en
 `~/.config/gpi-music/config.json` (mapa de códigos de Linux → acción).

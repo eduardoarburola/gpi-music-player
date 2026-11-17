@@ -353,7 +353,7 @@ class UI:
         self.text((self.width - pad, vol_y + 11 * self.scale), "%d%%" % int(volume * 100),
                   font=self.font_small, fill=self.theme.text_dim, anchor="ra")
 
-        self.footer([("A", "pausa"), ("X", "siguiente"), ("B", "salir")])
+        self.footer([("A", "pausa"), ("R", "siguiente"), ("B", "salir")])
 
     def draw_options(self, options: List[str], index: int, title: str = "Opciones") -> None:
         self.surface.clear(self.theme.background)
