@@ -10,7 +10,7 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageFont
+from .shim import Image, ImageDraw, ImageFont
 
 __all__ = ["Theme", "UI", "PIXEL_THEME", "RETRO_THEME"]
 
@@ -68,9 +68,10 @@ def _load_font(size: int, bold: bool = False):
                 return ImageFont.truetype(path, size)
             except OSError:
                 continue
+    # Sin fuentes TTF (backend pygame): la fuente por defecto con el tamaño pedido.
     try:
-        return ImageFont.load_default()
-    except OSError:
+        return ImageFont.load_default(size)
+    except TypeError:
         return ImageFont.load_default()
 
 
@@ -86,7 +87,7 @@ def _truncate(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> str
     """Corta el texto con '…' para que quepa en el ancho dado."""
     if _text_width(draw, text, font) <= max_width:
         return text
-    ellipsis = "…"
+    ellipsis = "..."
     low, high = 0, len(text)
     while low < high:
         mid = (low + high + 1) // 2
@@ -233,7 +234,7 @@ class UI:
             self.draw.rectangle((x, pos, x + 2 * self.scale, pos + 18 * self.scale),
                                 fill=self.theme.accent)
 
-        self.footer([("↑↓", "mover"), ("A", "reproducir"), ("B", "salir")])
+        self.footer([("Dir", "mover"), ("A", "reproducir"), ("B", "salir")])
 
     def _badge(self, source_label: str) -> str:
         if "MPD" in source_label:

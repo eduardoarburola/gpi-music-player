@@ -34,17 +34,31 @@ def _expand(path: str) -> str:
     return os.path.abspath(os.path.expanduser(os.path.expandvars(path)))
 
 
+def detect_platform() -> str:
+    """Detecta la distribución de la consola: recalbox, retropie o generic."""
+    if os.path.isdir("/recalbox/share"):
+        return "recalbox"
+    if os.path.isdir("/opt/retropie"):
+        return "retropie"
+    return "generic"
+
+
+def default_local_paths() -> List[str]:
+    """Carpetas de música según la plataforma detectada."""
+    platform = detect_platform()
+    if platform == "recalbox":
+        return ["/recalbox/share/roms/music", "/recalbox/share/music"]
+    if platform == "retropie":
+        return ["~/RetroPie/roms/music", "~/Music"]
+    return ["~/Music", os.path.join(os.path.expanduser("~"), "music")]
+
+
 @dataclass
 class LibraryConfig:
     """Dónde buscar música."""
 
     # Carpetas locales montadas en la microSD.
-    local_paths: List[str] = field(
-        default_factory=lambda: [
-            "~/RetroPie/roms/music",
-            "~/Music",
-        ]
-    )
+    local_paths: List[str] = field(default_factory=default_local_paths)
     # Montajes de red (Samba/NFS) que se montan en /mnt.
     scan_mounts: bool = True
     mount_roots: List[str] = field(default_factory=lambda: ["/mnt"])

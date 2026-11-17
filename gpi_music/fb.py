@@ -16,11 +16,14 @@ from __future__ import annotations
 import os
 from typing import List, Optional, Tuple
 
-try:  # Pillow es obligatorio para el reproductor.
-    from PIL import Image, ImageDraw
-except ImportError:  # pragma: no cover - se informa al usuario
+try:  # Pillow es obligatorio para el reproductor (o pygame, vía el shim).
+    from .shim import Image, ImageDraw
+except ImportError as exc:  # pragma: no cover - se informa al usuario
     Image = None  # type: ignore[assignment]
     ImageDraw = None  # type: ignore[assignment]
+    raise ImportError(
+        "gpi-music necesita Pillow o pygame para dibujar la pantalla"
+    ) from exc
 
 __all__ = ["Surface", "FBError"]
 
@@ -89,8 +92,8 @@ def _to6(value: int) -> int:
     return value * 63 // 5
 
 
-def _build_565_palette() -> Image.Image:
-    """Paleta de 256 colores que aproxima el espacio RGB565."""
+def _build_565_palette():
+    """Paleta de 256 colores que aproxima el espacio RGB565 (si el backend lo soporta)."""
     palette = Image.new("P", (1, 1))
     data: List[int] = []
     for r in range(6):
@@ -100,7 +103,10 @@ def _build_565_palette() -> Image.Image:
     for i in range(216, 256):
         v = int(i * 255 / 255)
         data.extend((v, v, v))
-    palette.putpalette(data)
+    try:
+        palette.putpalette(data)
+    except (AttributeError, ValueError):  # backend sin modo P
+        return None
     return palette
 
 
@@ -203,6 +209,8 @@ class Surface:
         # Fallback sin numpy: paleta de 256 tonos -> 565.
         if self._palette is None:
             self._palette = _build_565_palette()
+        if self._palette is None:
+            return self._pack_565_slow(rgb)
         indexed = rgb.quantize(palette=self._palette)
         table = []
         for r in range(6):
@@ -216,6 +224,14 @@ class Surface:
         out = bytearray()
         for index in indexed.tobytes():
             out += table[index]
+        return bytes(out)
+
+    def _pack_565_slow(self, image) -> bytes:
+        """Conversión RGB565 píxel a píxel (último recurso, sin numpy ni paleta)."""
+        out = bytearray()
+        for r, g, b in image.getdata():
+            value = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+            out += value.to_bytes(2, "little")
         return bytes(out)
 
     # ------------------------------------------------------------- salida ---

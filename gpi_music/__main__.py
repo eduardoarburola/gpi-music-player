@@ -12,19 +12,17 @@ import os
 import sys
 
 from .config import Config
-from .fb import FBError, Surface
+from .display import DisplayError, available_backends, create_display
 from .input import InputReader
 from .library import build_library
 
 
 def _preview(config: Config, path: str, width: int, height: int) -> int:
     """Genera un PNG de la interfaz (útil para revisar el diseño sin consola)."""
-    from PIL import Image
-
     from .app import App
     from .library import Track
 
-    surface = Surface(device="", width=width, height=height)
+    surface = create_display("", width=width, height=height)
     app = App(config, surface, input_reader=None)
     app.tracks = [
         Track(uri="/home/pi/RetroPie/roms/music/01.mp3", source_id="local", source_label="music (microSD)",
@@ -94,11 +92,15 @@ def main(argv=None) -> int:
         return _scan(config)
 
     try:
-        surface = Surface(device=args.fb)
-    except FBError as exc:
+        display = create_display(args.fb)
+    except DisplayError as exc:
         print("gpi-music: %s" % exc, file=sys.stderr)
         print("gpi-music: se continúa sin pantalla (modo headless)", file=sys.stderr)
-        surface = Surface(device="")
+        display = create_display("")
+
+    backends = available_backends()
+    print("gpi-music: backends de dibujo: %s" % ", ".join(
+        name for name, ok in backends.items() if ok and name != "framebuffer"), file=sys.stderr)
 
     reader = None
     if not args.no_input:
@@ -108,14 +110,14 @@ def main(argv=None) -> int:
 
     from .app import App
 
-    app = App(config, surface, input_reader=reader, start_track=args.track)
+    app = App(config, display, input_reader=reader, start_track=args.track)
     app.start_scan()
     try:
         app.run()
     finally:
         if reader:
             reader.close()
-        surface.close()
+        display.close()
     return 0
 
 

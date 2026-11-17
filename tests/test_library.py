@@ -66,8 +66,17 @@ class TestDiscoverMounts(unittest.TestCase):
 
 class TestConfigIntegration(unittest.TestCase):
     def test_defaults(self):
+        from gpi_music.config import default_local_paths, detect_platform
+
         config = Config.default()
-        self.assertIn("~/RetroPie/roms/music", config.library.local_paths)
+        paths = default_local_paths()
+        self.assertTrue(paths)
+        platform = detect_platform()
+        if platform == "retropie":
+            self.assertIn("~/RetroPie/roms/music", paths)
+        elif platform == "recalbox":
+            self.assertIn("/recalbox/share/roms/music", paths)
+        self.assertEqual(config.library.local_paths, paths)
         self.assertEqual(config.mpd_targets(), [])
 
     def test_mpd_targets(self):

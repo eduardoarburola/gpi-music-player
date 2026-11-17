@@ -43,16 +43,17 @@ class App:
     def __init__(
         self,
         config: Config,
-        surface,
+        display,
         input_reader: Optional[InputReader] = None,
         engine: Optional[PlaybackEngine] = None,
         start_track: Optional[str] = None,
     ) -> None:
         self.config = config
-        self.surface = surface
+        self.display = display
+        self.surface = display  # alias compatible
         self.inputs = input_reader
         self.engine = engine or create_engine(config.player.backend, config.player.alsa_mixer)
-        self.ui = UI(surface, base_font_size=config.ui.font_size)
+        self.ui = UI(display, base_font_size=config.ui.font_size)
         self.start_track = start_track
 
         self.view = VIEW_SCANNING
@@ -355,7 +356,7 @@ class App:
                         self._maybe_start_requested_track()
                 else:
                     self.ui.draw_scanning()
-                    self.surface.present()
+                    self.display.present()
                     time.sleep(frame_time)
                     continue
 
@@ -372,7 +373,7 @@ class App:
                         self.next_track()
 
             self.render()
-            self.surface.present()
+            self.display.present()
 
             elapsed = time.monotonic() - started
             if elapsed < frame_time:
