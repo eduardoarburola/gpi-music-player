@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from gpi_music.app import VIEW_FILES, VIEW_LIBRARY, VIEW_PLAYING, App
-from gpi_music.browser import Entry, is_audio, list_directory, parent_directory
+from gpi_music.browser import is_audio, list_directory, parent_directory
 from gpi_music.config import Config
 from gpi_music.fb import Surface
 

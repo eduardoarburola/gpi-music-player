@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
 __all__ = ["Entry", "list_directory", "parent_directory", "is_audio", "join_path"]
 
