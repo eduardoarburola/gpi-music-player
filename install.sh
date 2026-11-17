@@ -42,16 +42,25 @@ case "$PLATFORM" in
         INSTALL_DIR="/recalbox/share/system/gpi-music"
         ROMS_DIR="/recalbox/share/roms/music"
         LAUNCHER_PATH="/recalbox/share/system/gpi-music/gpi-music"
+        ES_INIT="/recalbox/share_init/system/.emulationstation/systemlist.xml"
+        ES_TARGET="/recalbox/share/system/.emulationstation/systemlist.xml"
+        ES_SYSTEMS="/recalbox/share/system/.emulationstation/es_systems.cfg"
         ;;
     retropie)
         INSTALL_DIR="/opt/gpi-music"
         ROMS_DIR=""
         LAUNCHER_PATH="/usr/local/bin/gpi-music"
+        ES_INIT=""
+        ES_TARGET=""
+        ES_SYSTEMS=""
         ;;
     *)
         INSTALL_DIR="${HOME}/.local/share/gpi-music"
         ROMS_DIR="${HOME}/Music"
         LAUNCHER_PATH="${INSTALL_DIR}/gpi-music"
+        ES_INIT=""
+        ES_TARGET=""
+        ES_SYSTEMS=""
         ;;
 esac
 
@@ -102,13 +111,32 @@ find "$INSTALL_DIR" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null ||
 chmod +x "$INSTALL_DIR/scripts/gpi-music" "$INSTALL_DIR/scripts"/*.py 2>/dev/null || true
 ok "Código instalado"
 
-# El lanzador apunta al directorio donde se acaba de instalar.
-sed -i "s|INSTALL_DIR=\"\${GPI_MUSIC_DIR:-/opt/gpi-music}\"|INSTALL_DIR=\"\${GPI_MUSIC_DIR:-$INSTALL_DIR}\"|" "$INSTALL_DIR/scripts/gpi-music"
+# El lanzador se genera con la ruta y el intérprete ya resueltos, para que
+# funcione desde EmulationStation sin depender de variables de entorno.
+write_launcher() {
+    cat > "$1" <<LAUNCHER
+#!/usr/bin/env bash
+# Lanzador de gpi-music (generado por install.sh)
+set -euo pipefail
+export PYTHONPATH="$INSTALL_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
+export PYTHONUNBUFFERED=1
+# Si el reproductor se lanza desde EmulationStation no debe abrir una consola.
+export SDL_VIDEODRIVER="\${SDL_VIDEODRIVER:-}"
+exec "$PYTHON_BIN" -m gpi_music "\$@"
+LAUNCHER
+    chmod 0755 "$1"
+}
 
-if install -m 0755 "$INSTALL_DIR/scripts/gpi-music" "$LAUNCHER_PATH" 2>/dev/null; then
-    ok "Lanzador en $LAUNCHER_PATH"
+write_launcher "$INSTALL_DIR/scripts/gpi-music"
+
+if [ "$LAUNCHER_PATH" != "$INSTALL_DIR/scripts/gpi-music" ]; then
+    if write_launcher "$LAUNCHER_PATH" 2>/dev/null; then
+        ok "Lanzador en $LAUNCHER_PATH"
+    else
+        warn "No se pudo crear $LAUNCHER_PATH (usa $INSTALL_DIR/scripts/gpi-music)"
+    fi
 else
-    warn "No se pudo crear $LAUNCHER_PATH (usa $INSTALL_DIR/scripts/gpi-music)"
+    ok "Lanzador en $LAUNCHER_PATH"
 fi
 
 # --------------------------------------------------------- 4. biblioteca ---
@@ -116,6 +144,15 @@ info "Preparando la carpeta de música"
 if [ -n "$ROMS_DIR" ]; then
     if mkdir -p "$ROMS_DIR" 2>/dev/null; then
         ok "Carpeta de música: $ROMS_DIR"
+        # EmulationStation oculta los sistemas que no tienen ningún juego.
+        CANCIONES="$(find "$ROMS_DIR" -maxdepth 2 -type f \
+            \( -iname '*.mp3' -o -iname '*.ogg' -o -iname '*.oga' -o -iname '*.opus' \
+               -o -iname '*.wav' -o -iname '*.flac' -o -iname '*.m4a' -o -iname '*.mp4' \
+               -o -iname '*.aac' -o -iname '*.wma' \) 2>/dev/null | head -n 1)"
+        if [ -z "$CANCIONES" ]; then
+            warn "La carpeta está vacía: la sección «Música» no aparecerá en"
+            warn "EmulationStation hasta que copies al menos una canción allí."
+        fi
     else
         warn "No se pudo crear $ROMS_DIR (¿permisos?)"
     fi
@@ -125,6 +162,7 @@ fi
 if [ "$PLATFORM" = "recalbox" ]; then
     info "Registrando el sistema «Música» en Recalbox"
     if "$PYTHON_BIN" "$INSTALL_DIR/scripts/patch_recalbox.py" \
+        --init "$ES_INIT" --target "$ES_TARGET" --es-systems "$ES_SYSTEMS" \
         --command "$LAUNCHER_PATH %ROM%" --roms "$ROMS_DIR"; then
         ok "Sistema «Música» añadido"
     else

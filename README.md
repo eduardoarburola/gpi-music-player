@@ -13,6 +13,10 @@ Funciona en **Recalbox 9** y en **RetroPie 4**, y en ambos casos en la GPi Case 
 ![vista de biblioteca](docs/library.svg)
 ![reproduciendo](docs/playing.svg)
 
+> Las capturas se guardan en `docs/*.svg` (con el PNG embebido) para que se vean
+> directamente en el README. Para regenerarlas en PNG: `python3 -m gpi_music --preview
+> docs/library.png` y `python3 -m gpi_music --preview docs/playing.png --playing`.
+
 ---
 
 ## Qué hace
@@ -68,8 +72,29 @@ El instalador:
 Después, copia tu música a la carpeta indicada y reinicia EmulationStation: en el carrusel
 aparecerá la sección «Música».
 
+> **Importante:** EmulationStation oculta los sistemas que no tienen ningún archivo. Si la
+> carpeta está vacía, la sección «Música» no aparecerá hasta que copies al menos una canción.
+
 > En Recalbox el directorio `/recalbox/share` es la carpeta que ves por Samba, así que puedes
 > copiar la música y los archivos desde el PC sin tocar la microSD.
+
+### Qué hace el instalador en Recalbox
+
+El registro se hace en `systemlist.xml`, el archivo que usa EmulationStation para saber qué
+sistemas existen:
+
+- se copia el original de `/recalbox/share_init/system/.emulationstation/systemlist.xml`
+  (de solo lectura, nunca se modifica) a `/recalbox/share/system/.emulationstation/`;
+- se añade un bloque `<system name="music">` con `path="%ROOT%/music"`, las extensiones de
+  audio y el comando que lanza el reproductor;
+- se deja una copia de seguridad `systemlist.xml.bak-AAAAmmddHHMMSS` por si acaso.
+
+También se escribe un `es_systems.cfg` en la misma carpeta por si tu versión de
+EmulationStation lee ese formato clásico en lugar del XML.
+
+El tema del sistema es `music`, que no viene con Recalbox: se usará el tema por defecto. Si
+prefieres que use el logo de otro sistema, edita el atributo `theme="music"` del bloque
+`<system>` en `systemlist.xml` (por ejemplo, `theme="ports"`).
 
 ## Controles
 
@@ -152,10 +177,21 @@ gpi-music --config /ruta/config.json
 
 **No se ve la sección «Música» en EmulationStation**
 EmulationStation solo lee la configuración al arrancar: reinícialo o reinicia la consola.
-En Recalbox, comprueba que el sistema quedó registrado:
+Comprueba, en este orden:
+
+1. que hay al menos una canción en `/recalbox/share/roms/music` (si no hay archivos, ES
+   oculta el sistema);
+2. que el sistema quedó registrado:
 
 ```bash
-grep -A3 'name="music"' /recalbox/share/system/.emulationstation/systemlist.xml
+grep -A6 'name="music"' /recalbox/share/system/.emulationstation/systemlist.xml
+```
+
+3. que el lanzador existe y arranca:
+
+```bash
+ls -l /recalbox/share/system/gpi-music/gpi-music
+/recalbox/share/system/gpi-music/gpi-music --scan
 ```
 
 **Los botones no responden**
@@ -166,7 +202,7 @@ groups | grep input
 sudo usermod -aG input pi     # y reinicia la sesión
 ```
 
-En Recalbox los botones del GPi Case se_MAPean con `mk_arcade_joystick`; el reproductor lee
+En Recalbox los botones del GPi Case se mapean con `mk_arcade_joystick`; el reproductor lee
 tanto eventos de teclado como de joystick, así que funciona con cualquiera de los dos modos.
 
 **La pantalla sale en blanco o con colores raros**

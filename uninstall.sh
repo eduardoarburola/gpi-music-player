@@ -18,20 +18,36 @@ if [ -d /recalbox/share ]; then
     PLATFORM="recalbox"
     INSTALL_DIR="/recalbox/share/system/gpi-music"
     LAUNCHER="/recalbox/share/system/gpi-music/gpi-music"
+    ES_INIT="/recalbox/share_init/system/.emulationstation/systemlist.xml"
+    ES_TARGET="/recalbox/share/system/.emulationstation/systemlist.xml"
+    ES_SYSTEMS="/recalbox/share/system/.emulationstation/es_systems.cfg"
 elif [ -d /opt/retropie ]; then
     PLATFORM="retropie"
     INSTALL_DIR="/opt/gpi-music"
     LAUNCHER="/usr/local/bin/gpi-music"
+    ES_INIT=""
+    ES_TARGET=""
+    ES_SYSTEMS=""
 else
     PLATFORM="generic"
     INSTALL_DIR="${HOME}/.local/share/gpi-music"
     LAUNCHER="${INSTALL_DIR}/gpi-music"
+    ES_INIT=""
+    ES_TARGET=""
+    ES_SYSTEMS=""
 fi
 
 info "Quitando el sistema «Música» de EmulationStation"
 if [ "$PLATFORM" = "recalbox" ] && [ -n "$PYTHON_BIN" ]; then
-    "$PYTHON_BIN" "$SRC_DIR/scripts/patch_recalbox.py" --remove || true
-    ok "Recalbox actualizado"
+    PATCH="$INSTALL_DIR/scripts/patch_recalbox.py"
+    [ -f "$PATCH" ] || PATCH="$SRC_DIR/scripts/patch_recalbox.py"
+    if [ -f "$PATCH" ]; then
+        "$PYTHON_BIN" "$PATCH" --remove --init "$ES_INIT" \
+            --target "$ES_TARGET" --es-systems "$ES_SYSTEMS" || true
+        ok "Recalbox actualizado"
+    else
+        warn "No se encontró patch_recalbox.py; el sistema «Música» sigue en systemlist.xml"
+    fi
 elif [ "$PLATFORM" = "retropie" ]; then
     for cfg in /opt/retropie/configs/all/emulationstation/es_systems.cfg /etc/emulationstation/es_systems.cfg; do
         if [ -f "$cfg" ] && [ -f "$SRC_DIR/scripts/patch_es_systems.py" ]; then
