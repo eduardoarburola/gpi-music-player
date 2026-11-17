@@ -60,5 +60,73 @@ class TestPygameMemoryDisplay(unittest.TestCase):
             screen.close()
 
 
+class TestFramebufferDisplay(unittest.TestCase):
+    """El backend que escribe directamente en /dev/fb0 (sin driver de vídeo)."""
+
+    def setUp(self):
+        if shim.HAVE_PIL:
+            self.skipTest("esta prueba es para el entorno con pygame")
+        import tempfile
+
+        from gpi_music import fb
+
+        self.tmp = tempfile.mkdtemp()
+        self.device = os.path.join(self.tmp, "fb0")
+        with open(self.device, "wb") as fh:
+            fh.write(b"\x00" * (8 * 4 * 2))
+        self._orig = fb._detect_fb_info
+        fb._detect_fb_info = lambda device: (8, 2, 32, 8 * 4)
+
+    def tearDown(self):
+        from gpi_music import fb
+
+        fb._detect_fb_info = self._orig
+
+    def test_writes_bgrx_pixels(self):
+        screen = display.FramebufferDisplay(device=self.device)
+        try:
+            self.assertEqual(screen.size, (8, 2))
+            screen.clear((255, 0, 0))
+            screen.present()
+            with open(self.device, "rb") as fh:
+                data = fh.read()
+            # BGRX: azul, verde, rojo, relleno
+            self.assertEqual(data[0:4], bytes([0, 0, 255, 0]))
+        finally:
+            screen.close()
+
+    def test_adds_stride_padding(self):
+        from gpi_music import fb
+
+        fb._detect_fb_info = lambda device: (8, 2, 32, 8 * 4 + 4)
+        screen = display.FramebufferDisplay(device=self.device)
+        try:
+            screen.clear((0, 255, 0))
+            screen.present()
+            with open(self.device, "rb") as fh:
+                data = fh.read()
+            self.assertEqual(len(data), (8 * 4 + 4) * 2)
+            self.assertEqual(data[0:4], bytes([0, 255, 0, 0]))
+            # El relleno va al final de cada fila (32 bytes de píxeles + 4 de relleno).
+            self.assertEqual(data[32:36], bytes([0, 0, 0, 0]))
+            self.assertEqual(data[36:40], bytes([0, 255, 0, 0]))
+        finally:
+            screen.close()
+
+    def test_does_not_initialise_the_sdl_video_driver(self):
+        """El backend de framebuffer no debe abrir SDL/Dispmanx.
+
+        Es lo que evita el cuelgue en ``flip()`` cuando EmulationStation
+        todavía tiene la pantalla.
+        """
+        import pygame
+
+        screen = display.FramebufferDisplay(device=self.device)
+        try:
+            self.assertFalse(pygame.display.get_init())
+        finally:
+            screen.close()
+
+
 if __name__ == "__main__":
     unittest.main()

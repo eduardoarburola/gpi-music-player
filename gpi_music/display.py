@@ -174,11 +174,95 @@ class PygameMemoryDisplay:
             pass
 
 
+class FramebufferDisplay:
+    """Dibuja con pygame en memoria y vuelca los píxeles a ``/dev/fb0``.
+
+    Evita el driver de vídeo de SDL (Dispmanx) de la GPi Case. Con ese driver,
+    ``pygame.display.flip()`` se queda bloqueado para siempre si otro proceso
+    (EmulationStation) todavía tiene la pantalla: la consola se queda con la
+    imagen congelada y los botones dejan de responder. Escribiendo directamente
+    en el framebuffer no hay nada que sincronizar con nadie.
+    """
+
+    def __init__(self, device: str = "/dev/fb0", width: int = 0, height: int = 0) -> None:
+        import pygame
+
+        if shim.HAVE_PIL:
+            raise DisplayError("el backend de framebuffer con pygame no se usa con Pillow")
+
+        from .fb import _detect_fb_info
+
+        try:
+            self.width, self.height, self.bpp, self.stride = _detect_fb_info(device)
+        except Exception as exc:  # noqa: BLE001
+            raise DisplayError("no se pudo detectar el framebuffer: %s" % exc) from exc
+        if self.bpp != 32:
+            raise DisplayError("el framebuffer es de %d bpp (solo se soporta 32)" % self.bpp)
+        try:
+            self._fd = os.open(device, os.O_WRONLY)
+        except OSError as exc:
+            raise DisplayError("no se pudo abrir %s: %s" % (device, exc)) from exc
+
+        self.device = device
+        self._pygame = pygame
+        # Solo la fuente: sin display.init() no se abre el driver de vídeo.
+        if not pygame.font.get_init():
+            pygame.font.init()
+        self._surface = pygame.Surface((self.width, self.height))
+        self._surface.fill((0, 0, 0))
+        self.image = shim.Image.from_surface(self._surface)
+        self.draw = shim.ImageDraw.Draw(self.image)
+
+    @property
+    def size(self):
+        return (self.width, self.height)
+
+    def present(self) -> None:
+        """Vuelca el lienzo al framebuffer."""
+        data = self._pack()
+        try:
+            os.lseek(self._fd, 0, os.SEEK_SET)
+            written = 0
+            view = memoryview(data)
+            while written < len(data):
+                written += os.write(self._fd, view[written:])
+        except OSError:
+            pass
+
+    def _pack(self) -> bytes:
+        raw = self.image.tobytes("raw", "BGRX")
+        row_bytes = self.width * 4
+        if self.stride in (0, row_bytes):
+            return raw
+        pad = self.stride - row_bytes
+        if pad <= 0:
+            return raw
+        out = bytearray()
+        for pos in range(0, len(raw), row_bytes):
+            out += raw[pos:pos + row_bytes]
+            out += b"\x00" * pad
+        return bytes(out)
+
+    def clear(self, color=(0, 0, 0)) -> None:
+        self._surface.fill(tuple(color))
+
+    def save_png(self, path: str) -> None:
+        self._pygame.image.save(self._surface, path)
+
+    def close(self) -> None:
+        if self._fd is not None:
+            try:
+                os.close(self._fd)
+            except OSError:
+                pass
+            self._fd = None
+
+
 def create_display(fb_device: str = "/dev/fb0", prefer: Optional[str] = None,
                    width: int = 0, height: int = 0):
     """Crea la pantalla con el mejor backend disponible.
 
-    ``prefer`` puede ser "pil", "pygame" o "auto" (por defecto).  Si
+    ``prefer`` puede ser "pil", "pygame", "fb" o "auto" (por defecto).  Si
     ``fb_device`` es una cadena vacía se fuerza el modo memoria (sin tocar la
     pantalla real), que es el que usan las vistas previas.
     """
@@ -201,7 +285,15 @@ def create_display(fb_device: str = "/dev/fb0", prefer: Optional[str] = None,
             if prefer == "pil":
                 raise DisplayError(str(exc)) from exc
 
-    if prefer in ("auto", "pygame"):
+    if prefer in ("auto", "fb", "pygame"):
+        # 1) Framebuffer directo: no depende del driver de vídeo de SDL.
+        if prefer in ("auto", "fb"):
+            try:
+                return FramebufferDisplay(device=fb_device)
+            except DisplayError:
+                if prefer == "fb":
+                    raise
+        # 2) SDL2 sobre el framebuffer (plan B).
         try:
             return PygameDisplay(width=width, height=height)
         except Exception as exc:  # noqa: BLE001

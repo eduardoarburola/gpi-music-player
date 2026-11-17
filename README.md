@@ -47,8 +47,26 @@ RetroFlag y los botones funcionando.
 | Instalación | `./install.sh` (sin root) | `sudo ./install.sh` |
 | Ubicación | `/recalbox/share/system/gpi-music` | `/opt/gpi-music` |
 | Carpeta de música | `/recalbox/share/roms/music` | `~/RetroPie/roms/music` |
-| Dibujado | pygame (SDL2) o Pillow | Pillow (o pygame) |
+| Dibujado | framebuffer (`/dev/fb0`) o pygame | Pillow (o pygame) |
 | Registro en ES | `systemlist.xml` | `es_systems.cfg` |
+
+### Backend de dibujo
+
+En Recalbox hay dos formas de dibujar píxeles, y la app usa la primera por defecto:
+
+1. **`fb` (recomendado)**: dibuja con pygame en memoria y vuelca los píxeles a
+   `/dev/fb0`. No abre el driver de vídeo de SDL, así que **no puede quedarse
+   bloqueada** esperando a que EmulationStation libere la pantalla (el driver
+   «RPI»/Dispmanx de la GPi Case se queda colgado en `flip()` si eso ocurre y
+   deja la consola con la imagen congelada).
+2. **`sdl`**: abre la ventana con SDL/Dispmanx. Es el plan B y se puede forzar
+   con `--display sdl`.
+
+Para ver dónde se ha quedado bloqueada la app (si alguna vez se cuelga):
+
+```bash
+kill -USR1 $(pgrep -f gpi_music)   # vuelca la traza en /tmp/gpi-music-stack.log
+```
 
 ## Instalación
 

@@ -127,10 +127,42 @@ class _EventLog:
             self._fh = None
 
 
+def _display_prefer(name: str) -> str:
+    """Traduce la opción ``--display`` al nombre que entiende ``create_display``."""
+    if name == "sdl":
+        return "pygame"
+    if name == "pil":
+        return "pil"
+    if name == "fb":
+        return "fb"
+    return "auto"
+
+
+def _install_faulthandler() -> None:
+    """Permite volcar la traza de los hilos si la app se queda colgada.
+
+    Con ``kill -USR1 <pid>`` se escribe la traza de todos los hilos en
+    ``/tmp/gpi-music-stack.log``; es la forma rápida de saber dónde se ha
+    quedado bloqueada la aplicación.
+    """
+    try:
+        import faulthandler
+        import signal
+
+        path = os.environ.get("GPI_MUSIC_STACK_LOG", "/tmp/gpi-music-stack.log")
+        handler = open(path, "a", encoding="utf-8")
+        faulthandler.enable(file=handler)
+        faulthandler.register(signal.SIGUSR1, file=handler, all_threads=True)
+    except Exception:  # noqa: BLE001 - el diagnóstico nunca debe romper la app
+        pass
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="gpi-music", description="Reproductor de música para GPi Case")
     parser.add_argument("--config", help="ruta del archivo de configuración")
     parser.add_argument("--fb", default="/dev/fb0", help="dispositivo de framebuffer")
+    parser.add_argument("--display", default="auto", choices=("auto", "fb", "sdl", "pil"),
+                        help="backend de dibujo: fb (framebuffer directo), sdl (SDL/Dispmanx)")
     parser.add_argument("--scan", action="store_true", help="lista la biblioteca y sale")
     parser.add_argument("--preview", metavar="ARCHIVO", help="guarda un PNG de la interfaz y sale")
     parser.add_argument("--playing", action="store_true", help="con --preview, muestra la vista de reproducción")
@@ -149,13 +181,15 @@ def main(argv=None) -> int:
     if args.fps:
         config.ui.fps = args.fps
 
+    _install_faulthandler()
+
     if args.preview:
         return _preview(config, args.preview, args.width, args.height)
     if args.scan:
         return _scan(config)
 
     try:
-        display = create_display(args.fb)
+        display = create_display(args.fb, prefer=_display_prefer(args.display))
     except DisplayError as exc:
         print("gpi-music: %s" % exc, file=sys.stderr)
         print("gpi-music: se continúa sin pantalla (modo headless)", file=sys.stderr)
