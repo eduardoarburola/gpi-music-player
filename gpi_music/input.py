@@ -99,10 +99,10 @@ BTN_START = 0x13B
 BTN_MODE = 0x13C
 BTN_THUMBL = 0x13D
 BTN_THUMBR = 0x13E
-BTN_DPAD_UP = 0x120
-BTN_DPAD_DOWN = 0x121
-BTN_DPAD_LEFT = 0x122
-BTN_DPAD_RIGHT = 0x123
+BTN_DPAD_UP = 0x220
+BTN_DPAD_DOWN = 0x221
+BTN_DPAD_LEFT = 0x222
+BTN_DPAD_RIGHT = 0x223
 
 EV_SYN = 0x00
 EV_KEY = 0x01
@@ -312,7 +312,7 @@ class InputReader:
         self._abs_range: Dict[Tuple[int, int], Optional[Tuple[int, int]]] = {}
         self._neutral_seen = set()
         self._held: Dict[str, Tuple[float, bool]] = {}
-        self._held_by: Dict[str, set] = {}
+        self._held_src: Dict[str, Tuple[int, int]] = {}
         self._repeat_emit: Dict[str, float] = {}
         self.repeat_delay = max(0.05, float(repeat_delay))
         self.repeat_rate = max(0.03, float(repeat_rate))
@@ -345,26 +345,31 @@ class InputReader:
             except Exception:  # noqa: BLE001 - el log nunca debe romper la app
                 pass
 
-    def _press(self, action: str, fd: int, repeatable: bool = True) -> bool:
-        """Marca una acción como pulsada. Devuelve False si ya venía de otro mando."""
-        holders = self._held_by.setdefault(action, set())
-        if holders and fd not in holders:
-            # La misma dirección llega de dos dispositivos (teclado y hat):
-            # solo cuenta la primera, para no mover dos pasos.
-            return False
+    def _press(self, action: str, fd: int, code: int, repeatable: bool = True) -> bool:
+        """Marca una acción como pulsada.
+
+        Para las direcciones (arriba/abajo/izquierda/derecha) solo cuenta la
+        primera: la cruceta puede llegar como hat y como eje a la vez y no
+        debe mover dos pasos. El resto de botones se delivers siempre.
+        """
+        if action in REPEATABLE_ACTIONS:
+            source = self._held_src.get(action)
+            if source is not None and source != (fd, code):
+                return False
         now = time.monotonic()
-        holders.add(fd)
         self._held[action] = (now, repeatable)
+        self._held_src[action] = (fd, code)
         self._repeat_emit[action] = now
         return True
 
-    def _release(self, action: str, fd: int) -> None:
-        holders = self._held_by.get(action)
-        if holders:
-            holders.discard(fd)
-            if holders:
+    def _release(self, action: str, fd: int, code: int) -> None:
+        if action in REPEATABLE_ACTIONS:
+            source = self._held_src.get(action)
+            if source is not None and source != (fd, code):
+                # La acción la tiene otro botón: no se suelta aquí.
                 return
         self._held.pop(action, None)
+        self._held_src.pop(action, None)
         self._repeat_emit.pop(action, None)
 
     def _abs_limits(self, fd: int, code: int) -> Optional[Tuple[int, int]]:
@@ -459,7 +464,7 @@ class InputReader:
                 if pressed is not None:
                     pressed.discard(code)
                 if action:
-                    self._release(action, fd)
+                    self._release(action, fd, code)
                 return None
             if value not in (1, 2):  # 1 = pulsado, 2 = repetición del teclado
                 return None
@@ -468,7 +473,7 @@ class InputReader:
             if action:
                 # El teclado ya repite solo; los botones de mando no.
                 repeatable = code >= 0x100
-                if not self._press(action, fd, repeatable):
+                if not self._press(action, fd, code, repeatable):
                     return None
                 return action
             return None
@@ -493,14 +498,14 @@ class InputReader:
         self._dir_state[fd][code] = direction
         if direction == 0:
             # Al volver al centro se suelta la dirección.
-            self._release(actions[0], fd)
-            self._release(actions[1], fd)
+            self._release(actions[0], fd, code)
+            self._release(actions[1], fd, code)
             return None
         action = actions[0] if direction < 0 else actions[1]
         # Solo repetimos un eje si ya hemos visto el centro: así un mando mal
         # reportado (siempre en 0) no genera un scroll infinito.
         repeatable = code in (ABS_HAT0X, ABS_HAT0Y) or (fd, code) in self._neutral_seen
-        if not self._press(action, fd, repeatable):
+        if not self._press(action, fd, code, repeatable):
             return None
         return action
 

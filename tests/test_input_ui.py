@@ -17,6 +17,10 @@ from gpi_music.input import (
     ACTION_RIGHT,
     ACTION_TOGGLE,
     ACTION_UP,
+    BTN_DPAD_DOWN,
+    BTN_DPAD_LEFT,
+    BTN_DPAD_RIGHT,
+    BTN_DPAD_UP,
     InputReader,
     parse_event,
 )
@@ -82,10 +86,10 @@ class TestKeymap(unittest.TestCase):
         self.assertEqual(self.reader._translate(3, 0x11, 1, 0), ACTION_DOWN)
 
     def test_dpad_buttons(self):
-        self.assertEqual(self.reader._translate(1, 0x120, 1, 0), ACTION_UP)
-        self.assertEqual(self.reader._translate(1, 0x121, 1, 0), ACTION_DOWN)
-        self.assertEqual(self.reader._translate(1, 0x122, 1, 0), ACTION_LEFT)
-        self.assertEqual(self.reader._translate(1, 0x123, 1, 0), ACTION_RIGHT)
+        self.assertEqual(self.reader._translate(1, BTN_DPAD_UP, 1, 0), ACTION_UP)
+        self.assertEqual(self.reader._translate(1, BTN_DPAD_DOWN, 1, 0), ACTION_DOWN)
+        self.assertEqual(self.reader._translate(1, BTN_DPAD_LEFT, 1, 0), ACTION_LEFT)
+        self.assertEqual(self.reader._translate(1, BTN_DPAD_RIGHT, 1, 0), ACTION_RIGHT)
 
     def test_gamepad_mapping(self):
         self.assertEqual(self.reader._translate(1, 0x130, 1, 0), ACTION_CONFIRM)   # A
